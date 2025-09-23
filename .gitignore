@@ -1,0 +1,98 @@
+# --- OS junk ---
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.swp
+*~
+
+# --- IDEs ---
+.vs/
+.idea/
+*.sln.iml
+
+# VS Code: храним полезные конфиги, остальное игнорим
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# --- .NET / C# build output ---
+[Bb]in/
+[Oo]bj/
+out/
+Debug/
+Release/
+x64/
+x86/
+[Aa][Rr][Mm]*/
+[Ll]ogs/
+*.log
+
+# Паблиш/артефакты
+app.publish/
+publish/
+artifacts/
+dist/
+
+# --- NuGet ---
+packages/
+*.nupkg
+# разрешаем build-скрипты пакетов, если они вдруг лежат в репо
+!packages/build/
+
+# --- Tests ---
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# --- Tools & Analyzers ---
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+*.dotCover
+*.sln.DotSettings.user
+.StyleCop.Cache
+.nCrunch*/
+*.ncrunch*
+nCrunchTemp_*
+.sonarqube/
+
+# --- User files ---
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+# --- Local config / secrets (оставь appsettings.json под контролем) ---
+*.local.json
+appsettings.Development.json
+appsettings.Local.json
+*.secret.json
+.env
+.env.*
+
+# --- Node (если где-то используешь фронт-сборку) ---
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-lock.yaml
+
+# --- Rider / MSBuild caches ---
+/.vsconfig
+/.ionide
+
+# --- JetBrains profiler dumps ---
+*.iTrace
+*.iHeap
+
+# --- Misc DB / cache ---
+*.db
+*.db-shm
+*.db-wal
