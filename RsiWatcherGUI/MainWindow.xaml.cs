@@ -1,14 +1,16 @@
 using System.Windows;
 using System.Windows.Controls;
-using Forms = System.Windows.Forms;
 using RsiWatcherGUI.Core;
+using System.Net.Http;
+using MessageBox = System.Windows.Forms.MessageBox;
+using TextBox = System.Windows.Controls.TextBox;
 
 namespace RsiWatcherGUI
 {
     public partial class MainWindow : Window, ILogger
     {
         private CancellationTokenSource? _cts;
-        private Forms.NotifyIcon _tray;
+        private NotifyIcon _tray;
         private IAutostartService _autostart;
 
         public MainWindow()
@@ -16,10 +18,10 @@ namespace RsiWatcherGUI
             InitializeComponent();
 
             // Трей-иконка (переиспользуем в алертах)
-            _tray = new Forms.NotifyIcon
+            _tray = new NotifyIcon
             {
                 Visible = true,
-                Icon = System.Drawing.SystemIcons.Information,
+                Icon = SystemIcons.Information,
                 Text = "RSI Watcher (SOLID)"
             };
 
@@ -55,7 +57,7 @@ namespace RsiWatcherGUI
             if (!int.TryParse(PollBox.Text, out var poll) || poll < 3) { MessageBox.Show("Опрос ≥ 3 сек."); return; }
 
             var frames = new Dictionary<Timeframe, TfConfig>();
-            if (Use5m.IsChecked == true  && TryReadTf(Rsi5Box, Ob5Box, Os5Box, out var c5))   frames[Timeframe.M5]  = c5!;
+            if (Use5m.IsChecked == true && TryReadTf(Rsi5Box, Ob5Box, Os5Box, out var c5)) frames[Timeframe.M5] = c5!;
             if (Use15m.IsChecked == true && TryReadTf(Rsi15Box, Ob15Box, Os15Box, out var c15)) frames[Timeframe.M15] = c15!;
             if (Use30m.IsChecked == true && TryReadTf(Rsi30Box, Ob30Box, Os30Box, out var c30)) frames[Timeframe.M30] = c30!;
             if (frames.Count == 0) { MessageBox.Show("Включите хотя бы один TF."); return; }
@@ -67,8 +69,8 @@ namespace RsiWatcherGUI
             // --- Сборка сервисов (простая DI) ---
             var httpMoex = new HttpClient();
             var moex = new MoexIssClient(httpMoex, "futures", "forts", "RFUD");
-            var agg  = new AggregationService();
-            var rsi  = new WilderRsiCalculator();
+            var agg = new AggregationService();
+            var rsi = new WilderRsiCalculator();
             var resolver = new FortsFrontResolver(moex);
             var time = new SystemTimeProvider();
 
@@ -95,7 +97,7 @@ namespace RsiWatcherGUI
             catch (Exception ex)
             {
                 Error("Фатальная ошибка: " + ex.Message);
-                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
@@ -146,6 +148,16 @@ namespace RsiWatcherGUI
                 LogBox.AppendText($"[{DateTime.Now:HH:mm:ss}] ERROR: {message}\n");
                 LogBox.ScrollToEnd();
             });
+        }
+
+        private void Window_StateChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+
         }
     }
 }

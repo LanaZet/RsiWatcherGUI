@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -17,7 +18,7 @@ public sealed class MoexIssClient : IMoexClient
     private readonly HttpClient _http;
     private readonly string _engine, _market, _board;
 
-    public MoexIssClient(HttpClient http, string engine = "futures", string market = "forts", string board = "RFUD")
+    public  MoexIssClient(HttpClient http, string engine = "futures", string market = "forts", string board = "RFUD")
     {
         _http = http;
         _engine = engine; _market = market; _board = board;

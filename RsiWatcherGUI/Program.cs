@@ -1,15 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.Drawing;
 using System.Globalization;
-using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
-using System.Windows.Forms;
 
 internal static class Program
 {
@@ -26,33 +19,33 @@ public class MainForm : Form
     // Источник данных: фьючерсы на MOEX (FORTS)
     const string Engine = "futures";
     const string Market = "forts";
-    const string Board  = "RFUD";
+    const string Board = "RFUD";
     const int Interval1m = 1;
 
     readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(20) };
-    readonly Timer _timer = new() { Interval = 30000 }; // обновляется из UI
+    readonly System.Windows.Forms.Timer _timer = new() { Interval = 30000 }; // обновляется из UI
 
     // UI
     ComboBox instrumentCombo = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 240 };
-    CheckBox autoFrontCheck  = new() { Text = "Авто-контракт (ближайший)", Checked = true, AutoSize = true };
-    TextBox manualSecidBox   = new() { Width = 80, Enabled = false, PlaceholderText = "напр. SiZ5" };
-    NumericUpDown periodUp   = new() { Minimum = 2, Maximum = 200, Value = 14, Width = 60 };
-    NumericUpDown obUp       = new() { Minimum = 50, Maximum = 100, Value = 70, Width = 60, DecimalPlaces = 0 };
-    NumericUpDown osUp       = new() { Minimum = 0, Maximum = 50, Value = 30, Width = 60, DecimalPlaces = 0 };
-    NumericUpDown pollUp     = new() { Minimum = 3, Maximum = 600, Value = 30, Width = 80 };
-    CheckBox beepCheck       = new() { Text = "Звук", Checked = true, AutoSize = true };
-    CheckBox balloonCheck    = new() { Text = "Уведомления в трее", Checked = true, AutoSize = true };
-    Button startStopBtn      = new() { Text = "Старт", Width = 120, Height = 32 };
-    Label statusLbl          = new() { AutoSize = true, Text = "Ожидание…" };
-    Label secidLbl           = new() { AutoSize = true, Text = "SECID: —" };
-    Label rsiLbl             = new() { AutoSize = true, Text = "RSI 5/15/30: —" };
-    TextBox logBox           = new() { Multiline = true, ScrollBars = ScrollBars.Both, ReadOnly = true, WordWrap = true, Dock = DockStyle.Fill };
+    CheckBox autoFrontCheck = new() { Text = "Авто-контракт (ближайший)", Checked = true, AutoSize = true };
+    TextBox manualSecidBox = new() { Width = 80, Enabled = false, PlaceholderText = "напр. SiZ5" };
+    NumericUpDown periodUp = new() { Minimum = 2, Maximum = 200, Value = 14, Width = 60 };
+    NumericUpDown obUp = new() { Minimum = 50, Maximum = 100, Value = 70, Width = 60, DecimalPlaces = 0 };
+    NumericUpDown osUp = new() { Minimum = 0, Maximum = 50, Value = 30, Width = 60, DecimalPlaces = 0 };
+    NumericUpDown pollUp = new() { Minimum = 3, Maximum = 600, Value = 30, Width = 80 };
+    CheckBox beepCheck = new() { Text = "Звук", Checked = true, AutoSize = true };
+    CheckBox balloonCheck = new() { Text = "Уведомления в трее", Checked = true, AutoSize = true };
+    Button startStopBtn = new() { Text = "Старт", Width = 120, Height = 32 };
+    Label statusLbl = new() { AutoSize = true, Text = "Ожидание…" };
+    Label secidLbl = new() { AutoSize = true, Text = "SECID: —" };
+    Label rsiLbl = new() { AutoSize = true, Text = "RSI 5/15/30: —" };
+    TextBox logBox = new() { Multiline = true, ScrollBars = ScrollBars.Both, ReadOnly = true, WordWrap = true, Dock = DockStyle.Fill };
 
     NotifyIcon tray = new() { Visible = true, Icon = SystemIcons.Information, Text = "RSI Alerts (MOEX)" };
 
     bool running = false;
     string? resolvedSecid;
-    readonly Dictionary<int, Zone> zones = new() { {5, Zone.Neutral}, {15, Zone.Neutral}, {30, Zone.Neutral} };
+    readonly Dictionary<int, Zone> zones = new() { { 5, Zone.Neutral }, { 15, Zone.Neutral }, { 30, Zone.Neutral } };
 
     public MainForm()
     {
@@ -163,11 +156,11 @@ public class MainForm : Form
         {
             var candles1m = await FetchCandles1mAsync(resolvedSecid!, limit: 6000);
 
-            var c5  = Aggregate(candles1m, TimeSpan.FromMinutes(5));
+            var c5 = Aggregate(candles1m, TimeSpan.FromMinutes(5));
             var c15 = Aggregate(candles1m, TimeSpan.FromMinutes(15));
             var c30 = Aggregate(candles1m, TimeSpan.FromMinutes(30));
 
-            var rsi5  = ComputeRsi(c5.Select(x => x.Close).ToList(),  (int)periodUp.Value);
+            var rsi5 = ComputeRsi(c5.Select(x => x.Close).ToList(), (int)periodUp.Value);
             var rsi15 = ComputeRsi(c15.Select(x => x.Close).ToList(), (int)periodUp.Value);
             var rsi30 = ComputeRsi(c30.Select(x => x.Close).ToList(), (int)periodUp.Value);
 
@@ -176,7 +169,7 @@ public class MainForm : Form
             var last = new[] { c5.LastOrDefault(), c15.LastOrDefault(), c30.LastOrDefault() }.FirstOrDefault(x => x != null);
             if (last != null) statusLbl.Text = $"last close={last!.Close:F2}";
 
-            CheckZone(5,  rsi5);
+            CheckZone(5, rsi5);
             CheckZone(15, rsi15);
             CheckZone(30, rsi30);
         }
@@ -311,12 +304,12 @@ public class MainForm : Form
         var data = node["data"]!.AsArray();
 
         int idxBegin = cols.IndexOf("begin");
-        int idxEnd   = cols.IndexOf("end");
-        int idxOpen  = cols.IndexOf("open");
-        int idxHigh  = cols.IndexOf("high");
-        int idxLow   = cols.IndexOf("low");
+        int idxEnd = cols.IndexOf("end");
+        int idxOpen = cols.IndexOf("open");
+        int idxHigh = cols.IndexOf("high");
+        int idxLow = cols.IndexOf("low");
         int idxClose = cols.IndexOf("close");
-        int idxVol   = cols.IndexOf("volume");
+        int idxVol = cols.IndexOf("volume");
 
         var list = new List<Candle>(data.Count);
         foreach (var row in data)
@@ -324,10 +317,10 @@ public class MainForm : Form
             if (row is not JsonArray arr) continue;
             var c = new Candle(
                 Begin: ParseIso(arr[idxBegin]?.ToString()),
-                End:   ParseIso(arr[idxEnd]?.ToString()),
-                Open:  ParseDouble(arr[idxOpen]),
-                High:  ParseDouble(arr[idxHigh]),
-                Low:   ParseDouble(arr[idxLow]),
+                End: ParseIso(arr[idxEnd]?.ToString()),
+                Open: ParseDouble(arr[idxOpen]),
+                High: ParseDouble(arr[idxHigh]),
+                Low: ParseDouble(arr[idxLow]),
                 Close: ParseDouble(arr[idxClose]),
                 Volume: ParseLong(arr[idxVol])
             );
@@ -356,18 +349,19 @@ public class MainForm : Form
             list.Sort((a, b) => a.Begin.CompareTo(b.Begin));
 
             var begin = kv.Key;
-            var end   = begin + tf;
+            var end = begin + tf;
 
             // исключаем незавершённые
             if (end > DateTime.Now) continue;
 
             result.Add(new Candle(
-                begin, end,
-                open: list.First().Open,
-                high: list.Max(x => x.High),
-                low:  list.Min(x => x.Low),
-                close:list.Last().Close,
-                volume:list.Sum(x => x.Volume)
+                begin,
+                end,
+                Open: list.First().Open,
+                High: list.Max(x => x.High),
+                Low: list.Min(x => x.Low),
+                Close: list.Last().Close,
+                Volume: list.Sum(x => x.Volume)
             ));
         }
         return result;
