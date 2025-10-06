@@ -42,13 +42,16 @@ namespace RsiWatcherGUI
     readonly Dictionary<int, Zone> zones = new() { { 5, Zone.Neutral }, { 15, Zone.Neutral }, { 30, Zone.Neutral } };
     private System.Threading.CancellationTokenSource? _cts;
     private IRsiMonitor? _monitor;
+    private Task? _monitorTask;
 
         public MainForm()
         {
             Text = "RSI Watcher (MOEX Futures) — WinForms";
             MinimumSize = new Size(800, 540);
             _http.DefaultRequestHeaders.UserAgent.ParseAdd("rsi-watcher-winforms/1.0");
-            FormClosing += (_, __) => { try { tray.Dispose(); } catch { } };
+            FormClosing += MainForm_FormClosing;
+
+            // ...existing code...
             _timer.Tick += (_, __) => _ = TickOnceAsync();
 
             // Верхняя панель
@@ -124,6 +127,45 @@ namespace RsiWatcherGUI
             _alerts = new RsiWatcherGUI.Core.CompositeAlertSink(sinks.ToArray());
         }
 
+        private void MainForm_FormClosing(object? sender, FormClosingEventArgs e)
+        {
+            try
+            {
+                // Stop timers
+                _timer.Stop();
+                _blinkTimer.Stop();
+
+                // Cancel monitor and alert tasks
+                try { _cts?.Cancel(); } catch { }
+                try { _alertCts?.Cancel(); } catch { }
+
+                // If a monitor task is running, wait a short time for it to finish
+                if (_monitorTask != null)
+                {
+                    try
+                    {
+                        var t = _monitorTask;
+                        if (!t.Wait(TimeSpan.FromSeconds(2)))
+                        {
+                            // still running; attempt to cancel again and continue shutdown
+                            try { _cts?.Cancel(); } catch { }
+                        }
+                    }
+                    catch { }
+                }
+
+                // Dispose monitor if it implements IDisposable (best-effort)
+                try { (_monitor as IDisposable)?.Dispose(); } catch { }
+
+                // Dispose alert sinks if they implement IDisposable
+                try { (_alerts as IDisposable)?.Dispose(); } catch { }
+
+                // Dispose tray icon
+                try { tray.Visible = false; tray.Dispose(); } catch { }
+            }
+            catch { }
+        }
+
         async void StartStopBtn_Click(object? sender, EventArgs e)
         {
             if (running)
@@ -151,8 +193,8 @@ namespace RsiWatcherGUI
                 _cts = new System.Threading.CancellationTokenSource();
                 running = true; startStopBtn.Text = "Стоп"; statusLbl.Text = "Работает.";
 
-                // Start monitor in background
-                _ = Task.Run(async () =>
+                // Start monitor in background and keep a reference so we can wait/cancel on close
+                _monitorTask = Task.Run(async () =>
                 {
                     try
                     {
@@ -166,6 +208,7 @@ namespace RsiWatcherGUI
                     finally
                     {
                         this.InvokeIfRequired(() => { running = false; startStopBtn.Text = "Старт"; statusLbl.Text = "Остановлено."; });
+                        _monitorTask = null;
                     }
                 });
             }
