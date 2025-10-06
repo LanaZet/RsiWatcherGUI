@@ -1,5 +1,4 @@
 using System;
-using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -172,7 +171,7 @@ namespace RsiWatcherGUI
 
         private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
-        private void Set<T>(T value, [CallerMemberName] string? name = null) => OnPropertyChanged(name);
+    // removed unused helper Set<T>(T value...) — use Set(ref field, value) or OnPropertyChanged directly
 
         // AsyncRelayCommand implementation (small)
         private sealed class AsyncRelayCommand : ICommand

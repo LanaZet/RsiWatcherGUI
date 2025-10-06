@@ -63,12 +63,10 @@ namespace RsiWatcherGUI
 
             var row1 = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
             row1.Controls.Add(new Label { Text = "Инструмент:", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft });
-            instrumentCombo.Items.Add(new ComboItem("Доллар–рубль (Si)", "Si"));
-            instrumentCombo.Items.Add(new ComboItem("Нефть Brent (BR)", "BR"));
-            instrumentCombo.Items.Add(new ComboItem("Индекс РТС (RI)", "RI"));
-            instrumentCombo.Items.Add(new ComboItem("Сбербанк (SBRF)", "SBRF"));
-            instrumentCombo.Items.Add(new ComboItem("Газпром (GAZR)", "GAZR"));
+            foreach (var it in RsiWatcherGUI.Shared.InstrumentCatalog.Items)
+                instrumentCombo.Items.Add(new ComboItem(it.Display, it.Tag));
             instrumentCombo.SelectedIndex = 0;
+            instrumentCombo.SelectedIndexChanged += InstrumentCombo_SelectedIndexChanged;
             row1.Controls.Add(instrumentCombo);
 
             row1.Controls.Add(autoFrontCheck);
@@ -115,7 +113,7 @@ namespace RsiWatcherGUI
             var rsi = new WilderRsiCalculator();
             var resolver = new FortsFrontResolver(moex);
             var time = new SystemTimeProvider();
-            _monitor = new RsiMonitor(moex, agg, rsi, resolver, _alerts ?? new CompositeAlertSink(), time, new UiLogger(this));
+
 
             _blinkTimer.Tick += (s, e) => ToggleIndicator();
 
@@ -125,6 +123,9 @@ namespace RsiWatcherGUI
             if (balloonCheck.Checked) sinks.Add(new RsiWatcherGUI.Core.TrayAlertSink(tray));
             sinks.Add(new RsiWatcherGUI.Core.TelegramAlertSink(_http, () => ("", "")));
             _alerts = new RsiWatcherGUI.Core.CompositeAlertSink(sinks.ToArray());
+
+            // create monitor after alerts are composed so it receives the correct sinks
+            _monitor = new RsiMonitor(moex, agg, rsi, resolver, _alerts, time, new UiLogger(this));
         }
 
         private void MainForm_FormClosing(object? sender, FormClosingEventArgs e)
@@ -166,6 +167,73 @@ namespace RsiWatcherGUI
             catch { }
         }
 
+        private void Monitor_StateChanged(string secid, Timeframe tf, double? rsi, Zone zone)
+        {
+            // Update resolved secid
+            // Use UI thread for label updates and alert logic
+            try
+            {
+                this.InvokeIfRequired(() =>
+                {
+                    // resolved secid
+                    secidLbl.Text = secid; resolvedSecid = secid;
+
+                    // fetch current values from rsiLbl and replace the corresponding tf
+                    var parts = rsiLbl.Text.Split(':');
+                    var label = parts[0];
+                    var values = parts.Length > 1 ? parts[1].Trim() : "—/—/—";
+                    var arr = values.Split('/').Select(s => s.Trim()).ToArray();
+                    string f5 = arr.Length > 0 ? arr[0] : "—";
+                    string f15 = arr.Length > 1 ? arr[1] : "—";
+                    string f30 = arr.Length > 2 ? arr[2] : "—";
+
+                    var newVal = rsi.HasValue ? rsi.Value.ToString("F1") : "—";
+                    if (tf == Timeframe.M5) f5 = newVal;
+                    else if (tf == Timeframe.M15) f15 = newVal;
+                    else if (tf == Timeframe.M30) f30 = newVal;
+
+                    rsiLbl.Text = $"{label}: {f5}/{f15}/{f30}";
+
+                    // Zone transition + alerts: compare previous zone and trigger alerts only on change
+                    int key = (int)tf;
+                    var prev = zones.ContainsKey(key) ? zones[key] : Zone.Neutral;
+                    if (zone != prev)
+                    {
+                        zones[key] = zone;
+                        var ob = (double)obUp.Value; var os = (double)osUp.Value;
+                        string keyLabel = $"TF{key}m";
+                        if (zone == Zone.Overbought)
+                        {
+                            var msg = $"{secid} {keyLabel}: Перекуплен (RSI={rsi:F2} ≥ {ob})";
+                            Log("⚠ " + msg);
+                            Alert(msg);
+                            SetIndicatorAlert();
+                        }
+                        else if (zone == Zone.Oversold)
+                        {
+                            var msg = $"{secid} {keyLabel}: Перепродан (RSI={rsi:F2} ≤ {os})";
+                            Log("⚠ " + msg);
+                            Alert(msg);
+                            SetIndicatorAlert();
+                        }
+                        else // neutral
+                        {
+                            Log($"{secid} {keyLabel}: Возврат в диапазон ({os}..{ob})");
+                            // If all neutral, clear indicator; otherwise keep alert state
+                            if (zones.Values.All(z => z == Zone.Neutral)) SetIndicatorNormal();
+                            else SetIndicatorAlert();
+                        }
+                    }
+                    else
+                    {
+                        // zone unchanged: ensure indicator state is consistent
+                        if (zones.Values.All(z => z == Zone.Neutral)) SetIndicatorNormal();
+                    }
+                });
+            }
+            catch { }
+        }
+
         async void StartStopBtn_Click(object? sender, EventArgs e)
         {
             if (running)
@@ -178,22 +246,49 @@ namespace RsiWatcherGUI
                 return;
             }
 
+                try
+                {
+                    var root = ((ComboItem)instrumentCombo.SelectedItem!).Tag;
+                    var frames = new Dictionary<Timeframe, TfConfig>();
+                    frames[Timeframe.M5] = new TfConfig((int)periodUp.Value, (double)obUp.Value, (double)osUp.Value, true);
+                    frames[Timeframe.M15] = new TfConfig((int)periodUp.Value, (double)obUp.Value, (double)osUp.Value, true);
+                    frames[Timeframe.M30] = new TfConfig((int)periodUp.Value, (double)obUp.Value, (double)osUp.Value, true);
+
+                    var settings = new RsiMonitorSettings(root, string.IsNullOrWhiteSpace(manualSecidBox.Text) ? null : manualSecidBox.Text.Trim(), autoFrontCheck.Checked, (int)pollUp.Value, frames);
+                    await StartMonitor(settings);
+                }
+            catch (Exception ex)
+            {
+                statusLbl.Text = "Ошибка.";
+                Log("Ошибка запуска: " + ex.Message);
+                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private async Task StartMonitor(RsiMonitorSettings settings)
+        {
             try
             {
                 statusLbl.Text = "Запуск мониторинга…";
-                var root = ((ComboItem)instrumentCombo.SelectedItem!).Tag;
-
-                var frames = new Dictionary<Timeframe, TfConfig>();
-                frames[Timeframe.M5] = new TfConfig((int)periodUp.Value, (double)obUp.Value, (double)osUp.Value, true);
-                frames[Timeframe.M15] = new TfConfig((int)periodUp.Value, (double)obUp.Value, (double)osUp.Value, true);
-                frames[Timeframe.M30] = new TfConfig((int)periodUp.Value, (double)obUp.Value, (double)osUp.Value, true);
-
-                var settings = new RsiMonitorSettings(root, string.IsNullOrWhiteSpace(manualSecidBox.Text) ? null : manualSecidBox.Text.Trim(), autoFrontCheck.Checked, (int)pollUp.Value, frames);
-
                 _cts = new System.Threading.CancellationTokenSource();
                 running = true; startStopBtn.Text = "Стоп"; statusLbl.Text = "Работает.";
 
-                // Start monitor in background and keep a reference so we can wait/cancel on close
+                // Resolve SECID immediately so the user sees what we're monitoring
+                try
+                {
+                    var moex = new MoexIssClient(_http);
+                    var resolver = new FortsFrontResolver(moex);
+                    var sec = await resolver.ResolveActiveAsync(settings.InstrumentRoot, System.Threading.CancellationToken.None);
+                    this.InvokeIfRequired(() => { secidLbl.Text = sec; resolvedSecid = sec; });
+                }
+                catch { }
+
+                // Kick a single immediate fetch to update RSI displays right away (doesn't block monitor startup)
+                _ = Task.Run(async () => { try { await TickOnceAsync(); } catch { } });
+
+                // Subscribe to structured state events
+                try { _monitor.StateChanged += Monitor_StateChanged; } catch { }
+
                 _monitorTask = Task.Run(async () =>
                 {
                     try
@@ -208,26 +303,83 @@ namespace RsiWatcherGUI
                     finally
                     {
                         this.InvokeIfRequired(() => { running = false; startStopBtn.Text = "Старт"; statusLbl.Text = "Остановлено."; });
+                        try { _monitor.StateChanged -= Monitor_StateChanged; } catch { }
                         _monitorTask = null;
                     }
                 });
             }
             catch (Exception ex)
             {
-                statusLbl.Text = "Ошибка.";
                 Log("Ошибка запуска: " + ex.Message);
-                MessageBox.Show(ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private async void InstrumentCombo_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            var root = ((ComboItem)instrumentCombo.SelectedItem!).Tag;
+
+            // If not running, resolve SECID to show the user
+            if (!running)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var moex = new MoexIssClient(_http);
+                        var resolver = new FortsFrontResolver(moex);
+                        var sec = await resolver.ResolveActiveAsync(root, System.Threading.CancellationToken.None);
+                        this.InvokeIfRequired(() => { secidLbl.Text = sec; resolvedSecid = sec; });
+                            // fetch RSI once for the newly selected secid so UI is up-to-date
+                            try { await FetchAndUpdateAsync(sec); } catch { }
+                    }
+                    catch { }
+                });
+                return;
+            }
+
+            // If running, restart monitor with new root
+            try
+            {
+                statusLbl.Text = "Переключение инструмента…";
+                _cts?.Cancel();
+                if (_monitorTask != null)
+                {
+                    try { await Task.Run(() => _monitorTask!.Wait(2000)); } catch { }
+                }
+
+                var frames = new Dictionary<Timeframe, TfConfig>();
+                frames[Timeframe.M5] = new TfConfig((int)periodUp.Value, (double)obUp.Value, (double)osUp.Value, true);
+                frames[Timeframe.M15] = new TfConfig((int)periodUp.Value, (double)obUp.Value, (double)osUp.Value, true);
+                frames[Timeframe.M30] = new TfConfig((int)periodUp.Value, (double)obUp.Value, (double)osUp.Value, true);
+
+                var settings = new RsiMonitorSettings(root, string.IsNullOrWhiteSpace(manualSecidBox.Text) ? null : manualSecidBox.Text.Trim(), autoFrontCheck.Checked, (int)pollUp.Value, frames);
+                await StartMonitor(settings);
+            }
+            catch (Exception ex)
+            {
+                Log("Ошибка переключения: " + ex.Message);
             }
         }
 
         async Task TickOnceAsync()
         {
-            if (!running || string.IsNullOrWhiteSpace(resolvedSecid)) return;
+            if (string.IsNullOrWhiteSpace(resolvedSecid)) return;
+            await FetchAndUpdateAsync(resolvedSecid!);
+        }
 
+        // Perform a one-shot fetch and update UI for the provided SECID. This is used when
+        // switching instruments while the monitor is not running or to provide an immediate
+        // snapshot while starting the monitor.
+        async Task FetchAndUpdateAsync(string secid)
+        {
             try
             {
+                // show transient status while we fetch
+                string prevStatus = statusLbl.Text;
+                this.InvokeIfRequired(() => statusLbl.Text = "Обновление…");
+
                 var engine = new RsiEngine(_http);
-                var candles1m = await engine.FetchCandles1mAsync(resolvedSecid!, limit: 6000);
+                var candles1m = await engine.FetchCandles1mAsync(secid, limit: 6000);
 
                 var c5 = RsiEngine.Aggregate(candles1m, TimeSpan.FromMinutes(5));
                 var c15 = RsiEngine.Aggregate(candles1m, TimeSpan.FromMinutes(15));
@@ -237,53 +389,47 @@ namespace RsiWatcherGUI
                 var rsi15 = RsiEngine.ComputeRsi(c15.Select(x => x.Close).ToList(), (int)periodUp.Value);
                 var rsi30 = RsiEngine.ComputeRsi(c30.Select(x => x.Close).ToList(), (int)periodUp.Value);
 
-                rsiLbl.Text = $"RSI 5/15/30: {Fmt(rsi5)}/{Fmt(rsi15)}/{Fmt(rsi30)}";
+                // Instead of updating UI directly, route updates through the same
+                // Monitor_StateChanged pathway used by the running monitor so both
+                // one-shot and periodic updates follow a single codepath.
+                Zone z5 = Zone.Neutral; Zone z15 = Zone.Neutral; Zone z30 = Zone.Neutral;
+                var ob = (double)obUp.Value; var os = (double)osUp.Value;
+                if (rsi5.HasValue)
+                {
+                    if (rsi5.Value >= ob) z5 = Zone.Overbought;
+                    else if (rsi5.Value <= os) z5 = Zone.Oversold;
+                }
+                if (rsi15.HasValue)
+                {
+                    if (rsi15.Value >= ob) z15 = Zone.Overbought;
+                    else if (rsi15.Value <= os) z15 = Zone.Oversold;
+                }
+                if (rsi30.HasValue)
+                {
+                    if (rsi30.Value >= ob) z30 = Zone.Overbought;
+                    else if (rsi30.Value <= os) z30 = Zone.Oversold;
+                }
+
+                // Fire UI updates via the existing handler (it will marshal to UI thread as needed)
+                Monitor_StateChanged(secid, Timeframe.M5, rsi5, z5);
+                Monitor_StateChanged(secid, Timeframe.M15, rsi15, z15);
+                Monitor_StateChanged(secid, Timeframe.M30, rsi30, z30);
+
+                // Alerts and zone transitions are handled via Monitor_StateChanged now.
 
                 var last = new[] { c5.LastOrDefault(), c15.LastOrDefault(), c30.LastOrDefault() }.FirstOrDefault(x => x != null);
-                if (last != null) statusLbl.Text = $"last close={last!.Close:F2}";
-
-                CheckZone(5, rsi5);
-                CheckZone(15, rsi15);
-                CheckZone(30, rsi30);
+                if (last != null) this.InvokeIfRequired(() => statusLbl.Text = $"last close={last!.Close:F2}");
+                // restore previous status
+                this.InvokeIfRequired(() => statusLbl.Text = prevStatus);
             }
             catch (Exception ex)
             {
                 Log("Ошибка цикла: " + ex.Message);
+                this.InvokeIfRequired(() => statusLbl.Text = "Ошибка обновления");
             }
         }
 
-        void CheckZone(int tf, double? rsi)
-        {
-            if (rsi is null) return;
-            var val = rsi.Value;
-            var ob = (double)obUp.Value;
-            var os = (double)osUp.Value;
-
-            string key = $"TF{tf}m";
-
-            if (val >= ob && zones[tf] != Zone.Overbought)
-            {
-                zones[tf] = Zone.Overbought;
-                var msg = $"{resolvedSecid} {key}: Перекуплен (RSI={val:F2} ≥ {ob})";
-                Log("⚠ " + msg);
-                Alert(msg);
-                SetIndicatorAlert();
-            }
-            else if (val <= os && zones[tf] != Zone.Oversold)
-            {
-                zones[tf] = Zone.Oversold;
-                var msg = $"{resolvedSecid} {key}: Перепродан (RSI={val:F2} ≤ {os})";
-                Log("⚠ " + msg);
-                Alert(msg);
-                SetIndicatorAlert();
-            }
-            else if (val < ob && val > os && zones[tf] != Zone.Neutral)
-            {
-                zones[tf] = Zone.Neutral;
-                Log($"{resolvedSecid} {key}: Возврат в диапазон ({os}..{ob})");
-                SetIndicatorNormal();
-            }
-        }
+        // CheckZone removed — zone transitions and alerts are now handled centrally in Monitor_StateChanged
 
         void SetIndicatorAlert()
         {
@@ -365,8 +511,18 @@ namespace RsiWatcherGUI
             public void Info(string message)
             {
                 _owner.InvokeIfRequired(() => _owner.Log(message));
+
+                // SECID explicit message
                 if (message.StartsWith("SECID:", StringComparison.OrdinalIgnoreCase))
-                    _owner.InvokeIfRequired(() => _owner.secidLbl.Text = message.Substring(6).Trim());
+                {
+                    _owner.InvokeIfRequired(() => { var s = message.Substring(6).Trim(); _owner.secidLbl.Text = s; _owner.resolvedSecid = s; });
+                    return;
+                }
+
+                // Legacy periodic summary messages are no longer parsed here.
+                // Structured updates now arrive via RsiMonitor.StateChanged and update the UI directly.
+
+                // Alert messages
                 if (message.Contains("Перекуплен") || message.Contains("Перепродан"))
                     _owner.SetIndicatorAlert();
                 if (message.Contains("Возврат в диапазон"))

@@ -15,6 +15,11 @@ public sealed record RsiMonitorSettings(
 
 public sealed class RsiMonitor : IRsiMonitor
 {
+    // Event raised when a timeframe is computed or its zone changes.
+    // Parameters: secid, timeframe, rsi (nullable), zone
+    public delegate void StateChangedHandler(string secid, Timeframe tf, double? rsi, Zone zone);
+    public event StateChangedHandler? StateChanged;
+
     private readonly IMoexClient _moex;
     private readonly IAggregator _agg;
     private readonly IRsiCalculator _rsi;
@@ -78,6 +83,9 @@ public sealed class RsiMonitor : IRsiMonitor
                             _log.Info($"{secid} TF{(int)tf}m: Возврат в диапазон ({cfg.OS}..{cfg.OB})");
                         }
                     }
+
+                    // Raise structured state event for UI consumers
+                    try { StateChanged?.Invoke(secid, tf, rsi, zones[tf]); } catch { }
                 }
 
                 _log.Info($"[{secid}] {string.Join("  ", pieces)}  @ {_time.Now:HH:mm:ss}");

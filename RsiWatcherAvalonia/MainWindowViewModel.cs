@@ -51,6 +51,10 @@ namespace RsiWatcherAvalonia
 
         public ObservableCollection<string> Logs { get; } = new();
 
+    // Instruments shown in the ComboBox: display name (Russian) + root tag
+    public ObservableCollection<InstrumentItem> Instruments { get; } = new();
+    private InstrumentItem? _selectedInstrument; public InstrumentItem? SelectedInstrument { get => _selectedInstrument; set => Set(ref _selectedInstrument, value); }
+
         public ICommand StartStopCommand { get; }
         public ICommand TgTestCommand { get; }
 
@@ -60,6 +64,11 @@ namespace RsiWatcherAvalonia
         {
             StartStopCommand = new AsyncCommand(StartStopAsync);
             TgTestCommand = new AsyncCommand(TgTestAsync);
+
+            // Populate instruments from shared catalog
+            foreach (var it in RsiWatcherAvalonia.Shared.InstrumentCatalog.Items)
+                Instruments.Add(new InstrumentItem(it.Display, it.Tag));
+            if (Instruments.Count > 0) SelectedInstrument = Instruments[0];
         }
 
         private async Task TgTestAsync(CancellationToken ct)
@@ -85,7 +94,17 @@ namespace RsiWatcherAvalonia
             if (Use30m) frames[Timeframe.M30] = new TfConfig(Rsi30, Ob30, Os30, true);
             if (frames.Count == 0) { Info("Включите хотя бы один TF."); return; }
 
-            var settings = new RsiMonitorSettings(InstrumentRoot, ManualSecid, AutoFront, Poll, frames);
+            // If SelectedInstrument looks like a full SECID (letters + digits), prefer it as manual secid
+            string? manual = ManualSecid;
+            bool useAuto = AutoFront;
+            var sel = SelectedInstrument?.Tag;
+            if (!string.IsNullOrWhiteSpace(sel) && System.Text.RegularExpressions.Regex.IsMatch(sel, "^[A-Za-z]+\\d+$"))
+            {
+                manual = sel;
+                useAuto = false;
+            }
+
+            var settings = new RsiMonitorSettings(InstrumentRoot, manual, useAuto, Poll, frames);
 
             _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             OnPropertyChanged(nameof(IsRunning));
@@ -106,6 +125,7 @@ namespace RsiWatcherAvalonia
             var alerts = new CompositeAlertSink(sinks.ToArray());
 
             var monitor = new RsiMonitor(moex, agg, rsi, resolver, alerts, time, this);
+            monitor.StateChanged += Monitor_StateChanged;
 
             try
             {
@@ -115,10 +135,29 @@ namespace RsiWatcherAvalonia
             catch (Exception ex) { Error("Фатальная ошибка: " + ex.Message); }
             finally
             {
+                try { monitor.StateChanged -= Monitor_StateChanged; } catch { }
                 _cts = null;
                 StatusText = "Остановлено.";
                 OnPropertyChanged(nameof(IsRunning));
                 OnPropertyChanged(nameof(StartStopText));
+            }
+        }
+
+        private void Monitor_StateChanged(string secid, Timeframe tf, double? rsi, Zone zone)
+        {
+            // Update resolved secid and per-TF displays
+            Dispatcher.UIThread.Post(() => ResolvedSecidText = secid);
+            if (tf == Timeframe.M5)
+            {
+                Dispatcher.UIThread.Post(() => { Rsi5Text = rsi?.ToString("F1") ?? "—"; Rsi5Brush = (zone == Zone.Neutral) ? Brushes.Green : Brushes.Red; });
+            }
+            else if (tf == Timeframe.M15)
+            {
+                Dispatcher.UIThread.Post(() => { Rsi15Text = rsi?.ToString("F1") ?? "—"; Rsi15Brush = (zone == Zone.Neutral) ? Brushes.Green : Brushes.Red; });
+            }
+            else if (tf == Timeframe.M30)
+            {
+                Dispatcher.UIThread.Post(() => { Rsi30Text = rsi?.ToString("F1") ?? "—"; Rsi30Brush = (zone == Zone.Neutral) ? Brushes.Green : Brushes.Red; });
             }
         }
 
@@ -131,77 +170,21 @@ namespace RsiWatcherAvalonia
             Dispatcher.UIThread.Post(() => Logs.Add($"[{DateTime.Now:HH:mm:ss}] {message}"));
             if (message.StartsWith("SECID:", StringComparison.OrdinalIgnoreCase))
                 Dispatcher.UIThread.Post(() => ResolvedSecidText = message.Substring(6).Trim());
-            var idx = message.IndexOf("] ", StringComparison.Ordinal);
-            if (idx >= 0)
-            {
-                var tail = message.Substring(idx + 2);
-                Dispatcher.UIThread.Post(() => RsiNowText = tail);
-
-                // Periodic summary format produced by RsiMonitor:
-                // "[SECID] 5:72.3  15:68.4  30:n/a  @ HH:mm:ss"
-                // Extract all occurrences like "<tf>:<val>" and update the UI.
-                var matches = Regex.Matches(tail, "(?<tf>\\d+):(?<val>[0-9]+(?:\\.[0-9]+)?|n/a)");
-                if (matches.Count > 0)
-                {
-                    foreach (Match mm in matches)
-                    {
-                        var tf = mm.Groups["tf"].Value;
-                        var val = mm.Groups["val"].Value;
-                        if (tf == "5")
-                        {
-                            Dispatcher.UIThread.Post(() => Rsi5Text = val == "n/a" ? "—" : val);
-                            Dispatcher.UIThread.Post(() => Rsi5Brush = val == "n/a" ? Brushes.Gray : Brushes.Green);
-                        }
-                        else if (tf == "15")
-                        {
-                            Dispatcher.UIThread.Post(() => Rsi15Text = val == "n/a" ? "—" : val);
-                            Dispatcher.UIThread.Post(() => Rsi15Brush = val == "n/a" ? Brushes.Gray : Brushes.Green);
-                        }
-                        else if (tf == "30")
-                        {
-                            Dispatcher.UIThread.Post(() => Rsi30Text = val == "n/a" ? "—" : val);
-                            Dispatcher.UIThread.Post(() => Rsi30Brush = val == "n/a" ? Brushes.Gray : Brushes.Green);
-                        }
-                    }
-                }
-
-                // Update overall brush and also process OB/OS textual messages (alerts)
-                if (tail.Contains("Перекуплен") || tail.Contains("Перепродан"))
-                    Dispatcher.UIThread.Post(() => RsiNowBrush = Brushes.Red);
-                else if (tail.Contains("Возврат в диапазон"))
-                    Dispatcher.UIThread.Post(() => RsiNowBrush = Brushes.Green);
-
-                // Also try to parse verbose alert messages containing "RSI=..." and update per-TF brushes/values
-                var m = Regex.Match(tail, "TF(?<tf>\\d+)m:.*RSI=(?<val>[0-9]+\\.?[0-9]*)");
-                if (m.Success)
-                {
-                    var tf = m.Groups["tf"].Value;
-                    var val = m.Groups["val"].Value;
-                    if (tf == "5")
-                    {
-                        Dispatcher.UIThread.Post(() => Rsi5Text = val);
-                        if (tail.Contains("Перекуплен") || tail.Contains("Перепродан")) Dispatcher.UIThread.Post(() => Rsi5Brush = Brushes.Red);
-                        else if (tail.Contains("Возврат в диапазон")) Dispatcher.UIThread.Post(() => Rsi5Brush = Brushes.Green);
-                    }
-                    else if (tf == "15")
-                    {
-                        Dispatcher.UIThread.Post(() => Rsi15Text = val);
-                        if (tail.Contains("Перекуплен") || tail.Contains("Перепродан")) Dispatcher.UIThread.Post(() => Rsi15Brush = Brushes.Red);
-                        else if (tail.Contains("Возврат в диапазон")) Dispatcher.UIThread.Post(() => Rsi15Brush = Brushes.Green);
-                    }
-                    else if (tf == "30")
-                    {
-                        Dispatcher.UIThread.Post(() => Rsi30Text = val);
-                        if (tail.Contains("Перекуплен") || tail.Contains("Перепродан")) Dispatcher.UIThread.Post(() => Rsi30Brush = Brushes.Red);
-                        else if (tail.Contains("Возврат в диапазон")) Dispatcher.UIThread.Post(() => Rsi30Brush = Brushes.Green);
-                    }
-                }
-            }
+            // Legacy text parsing removed: structured updates are handled via StateChanged.
             Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(IsRunning)));
             Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(StartStopText)));
         }
 
     public void Error(string message) => Dispatcher.UIThread.Post(() => Logs.Add($"[{DateTime.Now:HH:mm:ss}] ОШИБКА: {message}"));
+
+        // Simple instrument item for display in the ComboBox
+        public sealed class InstrumentItem
+        {
+            public string Display { get; }
+            public string Tag { get; }
+            public InstrumentItem(string display, string tag) { Display = display; Tag = tag; }
+            public override string ToString() => Display;
+        }
 
         private void Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
         {

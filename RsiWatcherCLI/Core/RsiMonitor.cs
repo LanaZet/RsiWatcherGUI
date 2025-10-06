@@ -4,6 +4,9 @@ public sealed record RsiMonitorSettings(string InstrumentRoot, string? ManualSec
 
 public sealed class RsiMonitor
 {
+    public delegate void StateChangedHandler(string secid, Timeframe tf, double? rsi, Zone zone);
+    public event StateChangedHandler? StateChanged;
+
     private readonly IMoexClient _moex; private readonly IAggregator _agg; private readonly IRsiCalculator _rsi; private readonly IContractResolver _resolver; private readonly IAlertSink _alerts; private readonly ITimeProvider _time; private readonly ILogger _log;
     public RsiMonitor(IMoexClient moex, IAggregator agg, IRsiCalculator rsi, IContractResolver resolver, IAlertSink alerts, ITimeProvider time, ILogger log)
     { _moex = moex; _agg = agg; _rsi = rsi; _resolver = resolver; _alerts = alerts; _time = time; _log = log; }
@@ -33,6 +36,8 @@ public sealed class RsiMonitor
                         else if (val <= cfg.OS && zones[tf] != Zone.Oversold) { zones[tf] = Zone.Oversold; await _alerts.NotifyAsync($"{secid} TF{(int)tf}m: Перепродан (RSI={val:F2} <= {cfg.OS})", ct); }
                         else if (val < cfg.OB && val > cfg.OS && zones[tf] != Zone.Neutral) { zones[tf] = Zone.Neutral; _log.Info($"{secid} TF{(int)tf}m: Возврат в диапазон ({cfg.OS}..{cfg.OB})"); }
                     }
+
+                    try { StateChanged?.Invoke(secid, tf, rsi, zones[tf]); } catch { }
                 }
                 _log.Info($"[{secid}] {string.Join("  ", pieces)}  @ {_time.Now:HH:mm:ss}");
             }

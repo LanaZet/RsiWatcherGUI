@@ -9,10 +9,9 @@ namespace RsiWatcherGUI
 {
     public partial class MainWindow : Window
     {
-        private CancellationTokenSource? _cts;
-        private NotifyIcon _tray;
-        private IAutostartService _autostart;
-        private MainViewModel _vm;
+    private NotifyIcon _tray;
+    private IAutostartService _autostart;
+    private MainViewModel _vm;
 
         public MainWindow()
         {
@@ -49,14 +48,6 @@ namespace RsiWatcherGUI
             catch (Exception ex) { MessageBox.Show("Автозапуск: " + ex.Message); }
         }
 
-        private void Window_StateChanged(object sender, EventArgs e)
-        {
-
-        }
-
-        private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
-        {
-
-        }
+    // Window event handlers intentionally left out (no-op)
     }
 }

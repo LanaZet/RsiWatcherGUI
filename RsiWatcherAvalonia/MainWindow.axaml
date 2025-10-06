@@ -17,10 +17,7 @@
   <!-- Верхняя панель: инструмент, автопередний контракт, secid, опрос, запуск -->
     <StackPanel Orientation="Horizontal">
   <TextBlock VerticalAlignment="Center" Text="Инструмент:"/>
-      <ComboBox Width="260" SelectedIndex="0" Margin="6,0">
-        <ComboBoxItem Tag="Si">Доллар–рубль (Si)</ComboBoxItem>
-        <ComboBoxItem Tag="BR">Нефть Brent (BR)</ComboBoxItem>
-      </ComboBox>
+  <ComboBox Width="260" Margin="6,0" ItemsSource="{Binding Instruments}" SelectedItem="{Binding SelectedInstrument}"/>
 
   <CheckBox Content="Авто-фронт" Margin="8,0" IsChecked="{Binding AutoFront}"/>
 

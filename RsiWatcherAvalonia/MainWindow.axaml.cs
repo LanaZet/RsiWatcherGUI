@@ -6,25 +6,21 @@ namespace RsiWatcherAvalonia;
 
 public partial class MainWindow : Window
 {
-    private CancellationTokenSource? _cts;
-    private RsiMonitor? _monitor;
+    public MainWindow()
+    {
+        InitializeComponent();
+        var vm = new MainWindowViewModel();
+        DataContext = vm;
 
-        public MainWindow()
+        // Keep UI logger for older code paths (TextBox named LogBox)
+        var logBox = this.FindControl<TextBox>("LogBox");
+        if (logBox != null)
         {
-            InitializeComponent();
-            var vm = new MainWindowViewModel();
-            DataContext = vm;
-
-            // Keep UI logger for older code paths (TextBox named LogBox)
-            var logBox = this.FindControl<TextBox>("LogBox");
-            if (logBox != null)
-            {
-                var uiLogger = new UiLogger(logBox);
-                var uiAlert = new UiAlertSink(logBox);
-                // Subscribe ViewModel logs into the old LogBox so both show messages
-                vm.PropertyChanged += (_, __) => { };
-            }
+            var uiLogger = new UiLogger(logBox);
+            // uiAlert intentionally not stored; used only to provide an alert sink that writes to LogBox
+            _ = new UiAlertSink(logBox);
         }
+    }
 
     private sealed class UiLogger : RsiWatcherCLI.Core.ILogger
     {
