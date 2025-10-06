@@ -1,0 +1,50 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch RsiWatcherCLI",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build RsiWatcherCLI",
+      "program": "/usr/local/share/dotnet/dotnet",
+      "args": [ "run", "--project", "${workspaceFolder}/RsiWatcherCLI/RsiWatcherCLI.csproj", "-c", "Debug" ],
+      "cwd": "${workspaceFolder}/RsiWatcherCLI",
+      "stopAtEntry": false,
+      "console": "integratedTerminal"
+  },
+    {
+      "name": "Launch RsiWatcherAvalonia",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build RsiWatcherAvalonia",
+      "program": "/usr/local/share/dotnet/dotnet",
+      "args": [ "run", "--project", "${workspaceFolder}/RsiWatcherAvalonia/RsiWatcherAvalonia.csproj", "-c", "Debug" ],
+      "cwd": "${workspaceFolder}/RsiWatcherAvalonia",
+      "stopAtEntry": false,
+      "console": "integratedTerminal"
+    }
+    ,
+    {
+      "name": "Запуск (macOS) — Avalonia",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build RsiWatcherAvalonia",
+      "program": "/usr/local/share/dotnet/dotnet",
+      "args": [ "run", "--project", "${workspaceFolder}/RsiWatcherAvalonia/RsiWatcherAvalonia.csproj", "-c", "Debug" ],
+      "cwd": "${workspaceFolder}/RsiWatcherAvalonia",
+      "stopAtEntry": false,
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Запуск (Windows) — WPF",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build RsiWatcherGUI",
+      "program": "/usr/local/share/dotnet/dotnet",
+      "args": [ "run", "--project", "${workspaceFolder}/RsiWatcherGUI/RsiWatcherGUI.csproj", "-c", "Debug" ],
+      "cwd": "${workspaceFolder}/RsiWatcherGUI",
+      "stopAtEntry": false,
+      "console": "integratedTerminal"
+    }
+  ]
+}

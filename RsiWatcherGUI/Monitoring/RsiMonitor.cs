@@ -61,12 +61,16 @@ public sealed class RsiMonitor : IRsiMonitor
                         if (val >= cfg.OB && zones[tf] != Zone.Overbought)
                         {
                             zones[tf] = Zone.Overbought;
-                            await _alerts.NotifyAsync($"{secid} TF{(int)tf}m: Перекуплен (RSI={val:F2} ≥ {cfg.OB})", ct);
+                            var msg = $"{secid} TF{(int)tf}m: Перекуплен (RSI={val:F2} ≥ {cfg.OB})";
+                            _log.Info(msg);
+                            await _alerts.NotifyAsync(msg, ct);
                         }
                         else if (val <= cfg.OS && zones[tf] != Zone.Oversold)
                         {
                             zones[tf] = Zone.Oversold;
-                            await _alerts.NotifyAsync($"{secid} TF{(int)tf}m: Перепродан (RSI={val:F2} ≤ {cfg.OS})", ct);
+                            var msg = $"{secid} TF{(int)tf}m: Перепродан (RSI={val:F2} ≤ {cfg.OS})";
+                            _log.Info(msg);
+                            await _alerts.NotifyAsync(msg, ct);
                         }
                         else if (val < cfg.OB && val > cfg.OS && zones[tf] != Zone.Neutral)
                         {
