@@ -1,4 +1,5 @@
 using System.Media;
+using System.Net.Http;
 using Forms = System.Windows.Forms;
 
 namespace RsiWatcherGUI.Core;

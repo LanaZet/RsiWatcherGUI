@@ -96,3 +96,6 @@ pnpm-lock.yaml
 *.db
 *.db-shm
 *.db-wal
+
+RsiWatcherGUI/[Bb]in/
+RsiWatcherGUI/[Oo]bj/
